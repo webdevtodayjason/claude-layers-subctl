@@ -1,5 +1,10 @@
 # claude-layers
 
+[![Latest release](https://img.shields.io/github/v/release/frontier-infra/claude-layers?label=release&color=7C3AED)](https://github.com/frontier-infra/claude-layers/releases)
+[![License: MIT](https://img.shields.io/github/license/frontier-infra/claude-layers?color=blue)](LICENSE)
+[![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757)](https://claude.com/claude-code)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+
 **A layered behavioral configuration system for Claude Code.**
 
 `claude-layers` installs a four-layer instruction architecture into your Claude Code project. The layers compose at runtime so that universal coding discipline, role-specific behavior, project-specific values, and per-task constraints all stack into a single coherent context, with clear precedence rules and no silent contradictions.
@@ -22,7 +27,7 @@ cd claude-layers
 
 ## Why this exists
 
-In late 2025, the bar for what an AI coding agent could do crossed a threshold. Andrej Karpathy summarized the failure modes that remain:
+In late 2025, the bar for what an AI coding agent could do crossed a threshold. Andrej Karpathy summarized the failure modes that remain ([source](https://x.com/karpathy/status/2015883857489522876), [HN discussion](https://news.ycombinator.com/item?id=46771564)):
 
 > They make wrong assumptions on your behalf and just run along with them without checking. They don't manage their confusion, they don't seek clarifications, they don't surface inconsistencies, they don't present tradeoffs, they don't push back when they should, and they are still a little too sycophantic... They also really like to overcomplicate code and APIs, they bloat abstractions, they don't clean up dead code after themselves.
 
@@ -59,7 +64,12 @@ your-project/
     ├── agents/
     │   ├── FORGE.md                       # Layer 2: builder role
     │   ├── QUILL.md                       # Layer 2: writer role
-    │   └── SCOUT.md                       # Layer 2: investigator role
+    │   ├── SCOUT.md                       # Layer 2: investigator role
+    │   └── WARDEN.md                      # Layer 2: verifier role (/goal sign-off)
+    ├── commands/
+    │   ├── goal.md                        # /goal: open a verifiable contract
+    │   └── goal-verify.md                 # /goal-verify: run Warden, sign off
+    ├── goals/                             # /goal manifests + Warden proof artifacts
     ├── projects/
     │   ├── PROJECT_TEMPLATE.md            # blank template for new projects
     │   ├── PROJECT_WEBAPP.md              # example: full-stack web app
@@ -67,10 +77,12 @@ your-project/
     │   └── PROJECT_CLI.md                 # example: command-line tool
     ├── orchestrator/
     │   └── ARGENT.md                      # routing and context composition
-    └── docs/
-        ├── LAYERING_MODEL.md              # how layers compose at runtime
-        ├── ROUTING_PATTERNS.md            # when to use which agent
-        └── CREATING_OVERLAYS.md           # how to write a new overlay
+    ├── docs/
+    │   ├── LAYERING_MODEL.md              # how layers compose at runtime
+    │   ├── ROUTING_PATTERNS.md            # when to use which agent
+    │   ├── CREATING_OVERLAYS.md           # how to write a new overlay
+    │   └── GOAL_PROTOCOL.md               # /goal manifest + Warden + Stop hook
+    └── settings.example.json              # reference Stop-hook config for /goal gating
 ```
 
 The example projects (`WEBAPP`, `API`, `CLI`) are reference material. Delete the ones you do not need and copy `PROJECT_TEMPLATE.md` to create your own.
@@ -102,19 +114,26 @@ The agent now has:
 
 The agent has enough context to do the work correctly and enough boundaries to refuse if the task implies overstepping.
 
-## The three roles
+## The four roles
 
-`claude-layers` ships with three roles. The pattern is deliberate: they cover the full lifecycle of any technical change.
+`claude-layers` ships with four roles. The pattern is deliberate: they cover the full lifecycle of any technical change — *what exists* (Scout), *what to do* (Quill), *the doing* (Forge), and *did it actually meet the contract* (Warden).
 
 | Role | What they do | What they refuse |
 |---|---|---|
 | **Forge** | Implements code against a spec | Decides what to build, expands scope, makes architecture decisions |
 | **Quill** | Writes specs, docs, READMEs, comments | Writes code (except illustrative snippets) |
 | **Scout** | Investigates existing systems, traces flows, reproduces bugs | Decides what to change, writes the fix |
+| **Warden** | Verifies that delivered work meets its `/goal` manifest, writes the proof artifact, signs off or kicks back | Patches failures, edits the manifest, negotiates partial sign-off |
 
 This separation is the source of most of the value. When an agent has a narrow role with explicit "what you do not own" boundaries, it stops doing the things you did not ask for. When you want it to do something outside its role, you invoke a different role.
 
 The "what you do not own" sections in each overlay are deliberately heavier than the "what you own" sections. That asymmetry is intentional: bounding behavior is harder than enabling it, and most LLM coding failures are scope-creep failures.
+
+## The `/goal` contract (v1.1.0+)
+
+Every code-changing slice gets a manifest at `.claude/goals/<task-id>.yaml` that declares its `done_when` checks (tests, commands, file constraints, diff constraints). Workers cannot self-assess "done" — Warden runs the manifest, writes `.claude/goals/<task-id>.proof.json`, and a Stop hook refuses to release the worker until `signed_off: true`. For Scout investigations and design slices where the verifier is operator judgment, Warden emits `signed_off: "pending"` plus a reviewer checklist; the operator flips it manually.
+
+Full spec lives at `.claude/docs/GOAL_PROTOCOL.md`. Reference Stop-hook config at `.claude/settings.example.json`.
 
 ## The orchestrator (optional but useful)
 
@@ -160,6 +179,8 @@ Each layer attacks a subset of common LLM coding failures:
 | Builder making architecture decisions | `FORGE.md` (what you do not own) |
 | Writer drifting into implementation | `QUILL.md` (what you do not own) |
 | Investigator confabulating findings | `SCOUT.md` (citation discipline) |
+| Worker self-assessing "done" without verification | `WARDEN.md` + `/goal` manifest + Stop hook |
+| Orchestrator dispatching "general-purpose" workers | `ARGENT.md` dispatch contract (role + project + manifest required) |
 | Project-specific rule violations | Project overlay non-negotiable rules |
 | Wrong project context applied | Orchestrator project identification |
 
@@ -232,4 +253,4 @@ MIT. Use it, modify it, ship it. Attribution is appreciated but not required.
 
 ## Acknowledgments
 
-The base `CLAUDE.md` discipline draws directly on the failure modes Andrej Karpathy documented in his late-2025 Claude Code retrospective. The layered architecture is influenced by years of building multi-agent systems where flat configurations consistently failed at scale.
+The base `CLAUDE.md` discipline draws directly on the failure modes Andrej Karpathy documented in his late-2025 Claude Code notes ([X thread](https://x.com/karpathy/status/2015883857489522876) · [Hacker News](https://news.ycombinator.com/item?id=46771564)). The layered architecture is influenced by years of building multi-agent systems where flat configurations consistently failed at scale.
